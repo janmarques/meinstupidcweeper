@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29709.97
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "cweeper", "cweeper\cweeper.csproj", "{D5F8C661-4739-40CB-B52E-67BE4AD8F9CB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D5F8C661-4739-40CB-B52E-67BE4AD8F9CB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D5F8C661-4739-40CB-B52E-67BE4AD8F9CB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D5F8C661-4739-40CB-B52E-67BE4AD8F9CB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D5F8C661-4739-40CB-B52E-67BE4AD8F9CB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F3858C59-26BE-4055-B3ED-67E52E5C5DC0}
+	EndGlobalSection
+EndGlobal
