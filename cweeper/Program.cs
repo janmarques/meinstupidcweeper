@@ -1,186 +1,149 @@
-﻿using System;
+﻿using OpenQA.Selenium;
+using OpenQA.Selenium.Chrome;
+using OpenQA.Selenium.Interactions;
+using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace cweeper
 {
     class Program
     {
-        static void Main(string[] args)
-        {
 
-            var game = new Game();
-            game.Setup(10, 10, 5);
+        static async Task Main(string[] args)
+        {
+            var browser = new ChromeDriver();
+            browser.Navigate().GoToUrl("https://minesweeper.online/game/263993505");
+
+            Console.ReadLine();
+            browser.FindElementById("top_area_face").Click();
+
+            Console.ReadLine();
 
             while (true)
             {
-               
+                if (browser.FindElementsByClassName("hd_top-area-face-win").Any())
+                {
+                    Console.ReadLine();
+                    browser.FindElementById("top_area_face").Click();
 
-                var analysis = new GameAnalysis(game);
+                    Console.ReadLine();
+                }
+                var htmlCells = browser.FindElementsByClassName("cell").ToList();
+
+                var onlineGame = new OnlineGame(htmlCells);
+
+                var analysis = new GameAnalysis(onlineGame);
                 var certainActions = analysis.GetCertainActions().ToList();
                 if (!certainActions.Any())
                 {
-                    var randomCell = game.GetRandomMove();
-                    game.ClickCell(randomCell);
+                    var ngStart = browser.FindElementsByClassName("start").SingleOrDefault();
+                    if (ngStart != null)
+                    {
+                        ngStart.Click();
+                    }
+                    else
+                    {
+                        var randomCell = analysis.Board.Where(x => !x.Discovered && !x.Flag).OrderBy(x => Guid.NewGuid()).First();
+                        var cell = browser.FindElementById($"cell_{randomCell.X}_{randomCell.Y}");
+                        cell.Click();
+                    }
                 }
                 else
                 {
                     foreach (var action in certainActions)
                     {
-                        var cell = game.Board.Single(x => x.X == action.X && x.Y == action.Y);
+                        var cell = browser.FindElementById($"cell_{action.X}_{action.Y}");
                         if (action.ShouldClick)
                         {
-                            game.ClickCell(cell);
+                            cell.Click();
+                            await Task.Delay(50);
                         }
                         else
                         {
-                            game.FlagCell(cell);
+                            var rightClickAction = new Actions(browser);
+                            rightClickAction.ContextClick(cell);
+                            rightClickAction.Perform();
+                        }
+                    }
+                }
+            }
+
+        }
+    }
+
+    class OnlineGame : IGame
+    {
+        public OnlineGame(List<IWebElement> htmlCells)
+        {
+            Board = new List<ICell>();
+            foreach (var cell in htmlCells)
+            {
+                var id = cell.GetAttribute("id");
+                var x = int.Parse(cell.GetAttribute("data-x"));
+                var y = int.Parse(cell.GetAttribute("data-y"));
+                var classes = cell.GetAttribute("class");
+                var isDiscovered = classes.Contains("hd_opened");
+                var isFlag = classes.Contains("hd_flag");
+                var bombCount = -1;
+                if (classes.Contains("hd_type"))
+                {
+                    for (int i = 0; i < 9; i++)
+                    {
+                        if (classes.Contains("hd_type" + i))
+                        {
+                            bombCount = i;
+                            break;
                         }
                     }
                 }
 
-                PrintBoard(game);
-                if(game.GameState != GameState.Running)
+                Board.Add(new OnlineCell
                 {
-                    Console.ReadLine();
-                    game = new Game();
-                    game.Setup(10, 10, 5);
-                }
-            }
+                    X = x,
+                    Y = y,
+                    IsBomb = false,
+                    IsClicked = isDiscovered,
+                    IsFlagged = isFlag,
+                    IsEmpty = bombCount == 0,
+                    NeighbouringBombCount = bombCount
+                });
 
+            }
         }
 
-        private static void PrintBoard(Game game)
-        {
-            var dashLine = new String('-', game.Width * 2 + 1);
-            Console.WriteLine(dashLine);
-            for (int x = 0; x < game.Height; x++)
-            {
-                Console.Write("|");
-
-                for (int y = 0; y < game.Width; y++)
-                {
-                    var cell = game.Board.Single(z => z.X == x && z.Y == y);
-                    Console.Write(cell);
-                    Console.Write("|");
-                }
-                Console.WriteLine();
-                Console.WriteLine(dashLine);
-            }
-
-            Console.WriteLine(game.GameState.ToString());
-        }
+        public List<ICell> Board { get; set; }
     }
 
     enum GameState { Running, Won, Lost }
-    class Game
+
+    internal interface IGame
     {
-        public List<Cell> Board;
-        public int Width;
-        public int Height;
-        public GameState GameState;
-
-        public void Setup(int width, int height, int bombs)
-        {
-            GameState = GameState.Running;
-            Width = width;
-            Height = height;
-            Board = new List<Cell>();
-            for (int x = 0; x < width; x++)
-            {
-                for (int y = 0; y < height; y++)
-                {
-                    Board.Add(new Cell(x, y));
-                }
-            }
-            foreach (var cell in Board)
-            {
-                cell.NeighbouringCells = GetNeighbouringCells(cell);
-            }
-            foreach (var bombCell in Board.OrderBy(x => Guid.NewGuid()).Take(bombs))
-            {
-                bombCell.SetBomb();
-            }
-        }
-
-        public void ClickCell(Cell c)
-        {
-            if (c.IsClicked) { return; }
-            c.Click();
-            if (c.IsBomb)
-            {
-                GameState = GameState.Lost;
-                return;
-            }
-            if (c.IsEmpty)
-            {
-                foreach (var neighbour in c.NeighbouringCells)
-                {
-                    ClickCell(neighbour);
-                }
-            }
-            if (Board.Where(x => !x.IsClicked).All(x => x.IsBomb))
-            {
-                GameState = GameState.Won;
-            }
-
-        }
-
-        public void FlagCell(Cell c)
-        {
-            c.Flag();
-
-        }
-
-
-        public Cell GetRandomMove() => 
-            
-            Board.Where(x => !x.IsClicked).OrderBy(x => Guid.NewGuid()).First();
-
-        private List<Cell> GetNeighbouringCells(Cell referenceCell)
-        {
-            var cells = new List<Cell>();
-            for (int x = -1; x <= 1; x++)
-            {
-                for (int y = -1; y <= 1; y++)
-                {
-                    var neighbouringCell = Board.SingleOrDefault(z => z.X == (referenceCell.X + x) && z.Y == (referenceCell.Y + y));
-                    if (neighbouringCell != null && neighbouringCell != referenceCell)
-                    {
-                        cells.Add(neighbouringCell);
-                    }
-                }
-            }
-            return cells;
-        }
+        List<ICell> Board { get; set; }
     }
 
-
-    class Cell
+    interface ICell
     {
-        public Cell(int x, int y)
-        {
-            X = x;
-            Y = y;
-        }
+        bool IsBomb { get; }
+        bool IsClicked { get; }
+        bool IsEmpty { get; }
+        bool IsFlagged { get; set; }
+        int NeighbouringBombCount { get; }
+        int X { get; }
+        int Y { get; }
+    }
 
-
-        public void SetBomb() => IsBomb = true;
-        public void Click()
-        {
-            IsFlagged = false;
-            IsClicked = true;
-        }
-        public void Flag() => IsFlagged = true;
-
+    public class OnlineCell : ICell
+    {
+        public bool IsBomb { get; set; }
+        public bool IsClicked { get; set; }
+        public bool IsEmpty { get; set; }
         public bool IsFlagged { get; set; }
-        public int X { get; }
-        public int Y { get; }
-        public bool IsClicked { get; private set; }
-        public bool IsBomb { get; private set; }
-        public List<Cell> NeighbouringCells { get; set; }
-        public int NeighbouringBombCount => NeighbouringCells.Count(x => x.IsBomb);
-        public bool IsEmpty => NeighbouringBombCount == 0;
+        public int NeighbouringBombCount { get; set; }
+        public int X { get; set; }
+        public int Y { get; set; }
 
         public override string ToString()
         {
@@ -191,12 +154,11 @@ namespace cweeper
         }
     }
 
-
     class GameAnalysis
     {
         public List<AnalysisCell> Board;
 
-        public GameAnalysis(Game game)
+        public GameAnalysis(IGame game)
         {
             Board = new List<AnalysisCell>();
             foreach (var cell in game.Board)
@@ -221,27 +183,31 @@ namespace cweeper
 
         public IEnumerable<CellAction> GetCertainActions()
         {
-            foreach (var discoveryEdge in Board.Where(x => x.Discovered)) // improve where clause?
+            for (int i = 0; i < 1; i++)
             {
-                // flag
-                var neighbouringPotentialBombs = discoveryEdge.NeighbouringCells.Where(x => !x.Discovered);
-                if (neighbouringPotentialBombs.Count() == discoveryEdge.Count)
+                foreach (var discoveryEdge in Board.Where(x => x.Discovered)) // improve where clause?
                 {
-                    foreach (var bomb in neighbouringPotentialBombs.Where(x => !x.Flag))
+                    // flag
+                    var neighbouringPotentialBombs = discoveryEdge.NeighbouringCells.Where(x => !x.Discovered);
+                    if (neighbouringPotentialBombs.Count() == discoveryEdge.Count)
                     {
-                        bomb.Flag = true;
-                        yield return new CellAction { ShouldClick = false, X = bomb.X, Y = bomb.Y };
+                        foreach (var bomb in neighbouringPotentialBombs.Where(x => !x.Flag))
+                        {
+                            bomb.Flag = true;
+                            yield return new CellAction { ShouldClick = false, X = bomb.X, Y = bomb.Y };
+                        }
                     }
-                }
 
-                // click
-                var neighbouringFlags = discoveryEdge.NeighbouringCells.Where(x => x.Flag);
-                if (neighbouringFlags.Count() == discoveryEdge.Count)
-                {
-                    var neighbouringUndiscoveredNonFlags = discoveryEdge.NeighbouringCells.Where(x => !x.Discovered && !x.Flag);
-                    foreach (var safeCell in neighbouringUndiscoveredNonFlags)
+                    // click
+                    var neighbouringFlags = discoveryEdge.NeighbouringCells.Where(x => x.Flag);
+                    if (neighbouringFlags.Count() == discoveryEdge.Count)
                     {
-                        yield return new CellAction { ShouldClick = true, X = safeCell.X, Y = safeCell.Y };
+                        var neighbouringUndiscoveredNonFlags = discoveryEdge.NeighbouringCells.Where(x => !x.Discovered && !x.Flag);
+                        foreach (var safeCell in neighbouringUndiscoveredNonFlags)
+                        {
+                            safeCell.Discovered = true;
+                            yield return new CellAction { ShouldClick = true, X = safeCell.X, Y = safeCell.Y };
+                        }
                     }
                 }
             }
