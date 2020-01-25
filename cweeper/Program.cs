@@ -34,7 +34,7 @@ namespace cweeper
 
             while (true)
             {
-                
+
                 if (browser.FindElementsByClassName("hd_top-area-face-win").Any() || browser.FindElementsByClassName("hd_top-area-face-lose").Any())
                 {
                     Console.ReadLine();
@@ -62,9 +62,10 @@ namespace cweeper
                     }
                     else
                     {
-                        var randomCell = analysis.Board.Where(x => !x.Discovered && !x.Flag).OrderBy(x => Guid.NewGuid()).First();
+                        var randomCell = analysis.Board.Values.Where(x => !x.Discovered && !x.Flag).OrderBy(x => Guid.NewGuid()).First();
                         var cell = browser.FindElementById($"cell_{randomCell.X}_{randomCell.Y}");
                         cell.Click();
+                        Console.WriteLine("random guess");
                     }
                 }
                 else
@@ -75,7 +76,7 @@ namespace cweeper
                         if (action.ShouldClick)
                         {
                             cell.Click();
-                            await Task.Delay(50);
+                            //await Task.Delay(50);
                         }
                         else
                         {
@@ -173,26 +174,26 @@ namespace cweeper
 
     class GameAnalysis
     {
-        public List<AnalysisCell> Board;
+        public Dictionary<string, AnalysisCell> Board;
 
         public GameAnalysis(IGame game)
         {
-            Board = new List<AnalysisCell>();
+            Board = new Dictionary<string, AnalysisCell>();
             foreach (var cell in game.Board)
             {
                 var analysisCell = new AnalysisCell { X = cell.X, Y = cell.Y };
                 if (cell.IsClicked)
                 {
-                    analysisCell.Count = cell.NeighbouringBombCount;
+                    analysisCell.BombNumber = cell.NeighbouringBombCount;
                     analysisCell.Discovered = true;
                 }
                 else if (cell.IsFlagged)
                 {
                     analysisCell.Flag = true;
                 }
-                Board.Add(analysisCell);
+                Board.Add(analysisCell.Key, analysisCell);
             }
-            foreach (var cell in Board)
+            foreach (var cell in Board.Values)
             {
                 cell.NeighbouringCells = GetNeighbouringCells(cell);
             }
@@ -200,27 +201,27 @@ namespace cweeper
 
         public IEnumerable<CellAction> GetCertainActions()
         {
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 2; i++)
             {
-                foreach (var discoveryEdge in Board.Where(x => x.Discovered)) // improve where clause?
+                foreach (var discoveryEdge in Board.Values.Where(x => x.Discovered)) // improve where clause?
                 {
                     if (discoveryEdge.NeighbouringCells.All(x => x.Discovered)) { continue; }
                     var foundSomething = false;
                     // flag
                     var neighbouringPotentialBombs = discoveryEdge.NeighbouringCells.Where(x => !x.Discovered);
-                    if (neighbouringPotentialBombs.Count() == discoveryEdge.Count)
+                    if (neighbouringPotentialBombs.Count() == discoveryEdge.BombNumber)
                     {
                         foreach (var bomb in neighbouringPotentialBombs.Where(x => !x.Flag))
                         {
                             bomb.Flag = true;
-                            yield return new CellAction { ShouldClick = false, X = bomb.X, Y = bomb.Y };
+                            //yield return new CellAction { ShouldClick = false, X = bomb.X, Y = bomb.Y };
                             foundSomething = true;
                         }
                     }
 
                     // click
                     var neighbouringFlags = discoveryEdge.NeighbouringCells.Where(x => x.Flag);
-                    if (neighbouringFlags.Count() == discoveryEdge.Count)
+                    if (neighbouringFlags.Count() == discoveryEdge.BombNumber)
                     {
                         var neighbouringUndiscoveredNonFlags = discoveryEdge.NeighbouringCells.Where(x => !x.Discovered && !x.Flag);
                         foreach (var safeCell in neighbouringUndiscoveredNonFlags)
@@ -234,9 +235,9 @@ namespace cweeper
                     //if (!foundSomething)
                     {
                         // 1-2-1 pattern
-                        if (discoveryEdge.Count == 2)
+                        if (discoveryEdge.BombNumber == 2)
                         {
-                            var neighBouringOnes = discoveryEdge.NeighbouringCells.Where(x => x.Count == 1);
+                            var neighBouringOnes = discoveryEdge.NeighbouringCells.Where(x => x.GetUnidentifiedBombsLeft() == 1);
                             if (neighBouringOnes.Count() != 2) { continue; }
                             var neighBourginOnesOnStraightLine = neighBouringOnes.All(x => x.X == discoveryEdge.X) || neighBouringOnes.All(x => x.Y == discoveryEdge.Y);
                             if (!neighBourginOnesOnStraightLine) { continue; }
@@ -247,14 +248,14 @@ namespace cweeper
                             var exactlyThreeUndetectedNeighbourgsOnStraightLine = undetectedNeighbourgs.Count() == 3 && (undetectedNeighbourgs.GroupBy(x => x.X).Count() == 1 || undetectedNeighbourgs.GroupBy(x => x.Y).Count() == 1);
                             if (!exactlyThreeUndetectedNeighbourgsOnStraightLine) { continue; }
                             var neighboursOtherThanOnesOrUndetected = discoveryEdge.NeighbouringCells.Except(neighBouringOnes).Except(undetectedNeighbourgs);
-                            var restIsZeroOrNothing = !neighboursOtherThanOnesOrUndetected.Any() || neighboursOtherThanOnesOrUndetected.All(x => x.Count == 0);
-                            if (!restIsZeroOrNothing) { continue; }
+                            var restIsDiscovered = !neighboursOtherThanOnesOrUndetected.Any() || neighboursOtherThanOnesOrUndetected.All(x => x.Discovered);
+                            if (!restIsDiscovered) { continue; }
                             var edge1 = undetectedNeighbourgs.OrderBy(x => x.X).ThenBy(x => x.Y).ElementAt(0);
                             var middleUndetected = undetectedNeighbourgs.OrderBy(x => x.X).ThenBy(x => x.Y).ElementAt(1);
                             var edge2 = undetectedNeighbourgs.OrderBy(x => x.X).ThenBy(x => x.Y).ElementAt(2);
                             yield return new CellAction { ShouldClick = true, X = middleUndetected.X, Y = middleUndetected.Y };
-                                yield return new CellAction { ShouldClick = false, X = edge1.X, Y = edge1.Y };
-                                yield return new CellAction { ShouldClick = false, X = edge2.X, Y = edge2.Y };
+                            //yield return new CellAction { ShouldClick = false, X = edge1.X, Y = edge1.Y };
+                            //yield return new CellAction { ShouldClick = false, X = edge2.X, Y = edge2.Y };
                         }
                     }
                 }
@@ -270,10 +271,10 @@ namespace cweeper
             {
                 for (int y = -1; y <= 1; y++)
                 {
-                    var neighbouringCell = Board.SingleOrDefault(z => z.X == (referenceCell.X + x) && z.Y == (referenceCell.Y + y));
-                    if (neighbouringCell != null && neighbouringCell != referenceCell)
+                    var exists = Board.TryGetValue($"{(referenceCell.X + x)}_{ (referenceCell.Y + y)}", out var neighbour);
+                    if (exists && neighbour != referenceCell)
                     {
-                        cells.Add(neighbouringCell);
+                        cells.Add(neighbour);
                     }
                 }
             }
@@ -292,9 +293,16 @@ namespace cweeper
     {
         public int X;
         public int Y;
-        public int Count;
+        public int BombNumber;
         public bool Discovered;
         public bool Flag;
+        public string Key => $"{X}_{Y}";
+
+        public int GetUnidentifiedBombsLeft()
+        {
+            if (BombNumber <= 0) { return BombNumber; }
+            return BombNumber - NeighbouringCells.Count(x => x.Flag);
+        }
 
         public List<AnalysisCell> NeighbouringCells { get; set; }
     }
